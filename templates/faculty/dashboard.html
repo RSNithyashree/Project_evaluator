@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Faculty Dashboard</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        body {
+            background: linear-gradient(to right, #e3f2fd, #f8f9fa);
+        }
+
+        .navbar {
+            background-color: #0d6efd;
+            color: white;
+            padding: 12px;
+        }
+
+        .card {
+            border-radius: 15px;
+        }
+
+        .table th {
+            background-color: #0d6efd;
+            color: white;
+        }
+
+        textarea {
+            resize: none;
+        }
+
+        .similarity-low {
+            color: green;
+            font-weight: bold;
+        }
+
+        .similarity-medium {
+            color: orange;
+            font-weight: bold;
+        }
+
+        .similarity-high {
+            color: red;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+
+<!-- NAVBAR -->
+<div class="navbar d-flex justify-content-between">
+    <h4 class="ms-3">👩‍🏫 Faculty Dashboard - {{dept}}</h4>
+    <a href="/logout" class="btn btn-light btn-sm me-3">Logout</a>
+</div>
+
+<div class="container mt-4">
+
+<h3>📘 Faculty Evaluation Panel</h3>
+
+<table class="table table-bordered text-center">
+<thead>
+<tr>
+    <th>Student Name</th>
+    <th>Roll No</th>
+    <th>Project Title</th>
+    <th>Description</th>
+    <th>Similarity %</th>
+    <th>Download</th>
+    <th>Marks</th>
+    <th>Feedback</th>
+    <th>Submit</th>
+</tr>
+</thead>
+
+<tbody>
+{% for p in projects %}
+<tr>
+<form method="POST" action="/evaluate/{{p.id}}">
+    <td>{{p.student_name}}</td>
+    <td>{{p.roll_no}}</td>
+    <td>{{p.title}}</td>
+    <td>{{p.description}}</td>
+
+    <td>
+        <span class="badge bg-danger">{{p.similarity_percentage}}%</span>
+    </td>
+
+    <td>
+        <a href="/uploads/{{p.file_path}}" class="btn btn-primary btn-sm">View</a>
+    </td>
+
+    <td>
+        <input type="number" name="marks" class="form-control" required>
+    </td>
+
+    <td>
+        <input type="text" name="feedback" class="form-control" required>
+    </td>
+
+    <td>
+        <button class="btn btn-success btn-sm">Submit</button>
+    </td>
+</form>
+</tr>
+{% endfor %}
+</tbody>
+
+</table>
+
+</div>
+
+
+</body>
+</html>

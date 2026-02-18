@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evaluate Project - Faculty</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f4f7f6; }
+        .eval-card { max-width: 650px; margin: 50px auto; border-radius: 15px; border: none; }
+        .project-header { background: linear-gradient(135deg, #0d6efd, #0b5ed7); color: white; border-radius: 15px 15px 0 0; padding: 25px; }
+        .similarity-badge { background: rgba(255,255,255,0.2); border: 1px solid white; padding: 4px 10px; border-radius: 5px; font-size: 0.85rem; }
+        .view-btn { background: #fff; color: #0d6efd; border: none; font-weight: bold; }
+        .view-btn:hover { background: #e9ecef; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="card eval-card shadow-lg">
+        <div class="project-header">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <h4 class="mb-1">Project Evaluation</h4>
+                    <p class="mb-0 fs-5"><strong>{{ project.title }}</strong></p>
+                </div>
+                <span class="similarity-badge">
+                    Similarity: {{ project.similarity_percentage }}%
+                </span>
+            </div>
+            <hr class="my-2 opacity-50">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="small">
+                    <strong>Student:</strong> {{ project.name }} <br>
+                    <strong>Roll No:</strong> {{ project.roll_no }}
+                </div>
+                <a href="{{ url_for('static', filename='uploads/' + project.file_path) }}" 
+                   target="_blank" 
+                   class="btn btn-sm view-btn">
+                    View Project File
+                </a>
+            </div>
+        </div>
+        
+        <div class="card-body p-4">
+            <form action="{{ url_for('faculty_evaluate', project_id=project.id) }}" method="POST" id="evalForm">
+                
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Marks (0 - 100)</label>
+                    <div class="input-group">
+                        <input type="number" 
+                               name="marks" 
+                               class="form-control form-control-lg" 
+                               placeholder="Enter score" 
+                               min="0" 
+                               max="100" 
+                               value="{{ project.marks if project.marks else '' }}"
+                               required>
+                        <span class="input-group-text">/ 100</span>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Faculty Feedback</label>
+                    <textarea name="feedback" 
+                              class="form-control" 
+                              rows="6" 
+                              placeholder="Provide constructive feedback for the student..." 
+                              required>{{ project.feedback if project.feedback else '' }}</textarea>
+                </div>
+
+                <div class="row g-2">
+                    <div class="col-8">
+                        <button type="submit" class="btn btn-success btn-lg w-100" id="submitBtn">
+                            Submit Final Evaluation
+                        </button>
+                    </div>
+                    <div class="col-4">
+                        <a href="{{ url_for('faculty_dashboard') }}" class="btn btn-outline-secondary btn-lg w-100">
+                            Cancel
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.getElementById('evalForm').onsubmit = function() {
+        document.getElementById('submitBtn').disabled = true;
+        document.getElementById('submitBtn').innerHTML = 'Processing...';
+    };
+</script>
+
+</body>
+</html>

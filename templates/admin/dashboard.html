@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HoD Dashboard | {{ dept }}</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body { background: #f4f7f6; font-family: 'Inter', sans-serif; }
+        .navbar { background-color: #212529; color: white; padding: 12px; }
+        .card { border: none; border-radius: 12px; transition: transform 0.2s; }
+        .chart-container { height: 300px; position: relative; }
+        /* Fixes the "jumping" behavior by ensuring height is reserved */
+        .dashboard-wrapper { min-height: 100vh; }
+    </style>
+</head>
+
+<body>
+
+<div class="navbar d-flex justify-content-between shadow-sm">
+    <h4 class="ms-3 mb-0">👨‍💼 HoD Dashboard</h4>
+    <div class="me-3">
+        <span class="badge bg-primary me-2">{{ dept }} Department</span>
+        <a href="/logout" class="btn btn-light btn-sm">Logout</a>
+    </div>
+</div>
+
+<div class="container mt-4 dashboard-wrapper">
+    <h2 class="mb-4 text-dark">Welcome, Head of {{ dept }}</h2>
+
+    <div class="row g-4">
+        <div class="col-md-5">
+            <div class="card shadow-sm p-4 h-100">
+                <h5 class="text-center mb-4">Project Status Overview</h5>
+                <div class="chart-container">
+                    <canvas id="statusChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-7">
+            <div class="card shadow-sm p-4 h-100">
+                <h5 class="mb-4">📁 Recent Submissions ({{ dept }})</h5>
+                <div class="table-responsive">
+                <div class="d-flex justify-content-between mb-3">
+                    <div class="btn-group">
+                        <a href="/admin/download-report" class="btn btn-outline-danger btn-sm">
+                            📄 Download Flagged PDF
+                        </a>
+                    </div>
+                    <form class="d-flex align-items-center" action="/admin/set-deadline" method="POST">
+                        <label class="me-2 small fw-bold text-muted">Set Deadline:</label>
+                        <input type="datetime-local" name="deadline" class="form-control form-control-sm me-2">
+                        <button class="btn btn-dark btn-sm">Save</button>
+                    </form>
+                </div>
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Student</th>
+                                <th>Project Title</th>
+                                <th>Similarity</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in projects %}
+                            <tr>
+                                <td>
+                                    <span class="fw-bold">{{ p.name }}</span><br>
+                                    <small class="text-muted">{{ p.roll_no }}</small>
+                                </td>
+                                <td>{{ p.title }}</td>
+                                <td>
+                                    <span class="fw-bold {{ 'text-danger' if p.similarity_percentage > 60 else 'text-success' }}">
+                                        {{ p.similarity_percentage }}%
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if p.status == 'Flagged' %}
+                                        <span class="badge bg-danger">Flagged</span>
+                                    {% else %}
+                                        <span class="badge bg-warning text-dark">Pending</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {{ p.similarity_percentage }}% 
+                                    <br><small class="text-muted">Matches: {{ p.matched_with or 'Original' }}</small>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="chart-data" 
+     data-labels='{{ analytics|map(attribute="status")|list|tojson|safe }}'
+     data-values='{{ analytics|map(attribute="count")|list|tojson|safe }}'
+     style="display: none;">
+</div>
+
+<script>
+(function() {
+    "use strict";
+
+    const dataContainer = document.getElementById('chart-data');
+    if (!dataContainer) return;
+
+    const labels = JSON.parse(dataContainer.getAttribute('data-labels'));
+    const dataValues = JSON.parse(dataContainer.getAttribute('data-values'));
+
+    const ctx = document.getElementById('statusChart').getContext('2d');
+
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: dataValues,
+                backgroundColor: [
+                    '#ffc107', // Warning/Pending
+                    '#dc3545', // Danger/Flagged
+                    '#198754'  // Success/Approved
+                ],
+                borderWidth: 2,
+                hoverOffset: 10
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { padding: 20, usePointStyle: true }
+                }
+            },
+            cutout: '70%' // Makes it a clean ring shape
+        }
+    });
+})();
+</script>
+
+</body>
+</html>
