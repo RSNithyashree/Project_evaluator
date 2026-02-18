@@ -111,26 +111,23 @@ from flask import render_template, request, redirect, url_for, session
 @app.route('/student/signup', methods=['GET', 'POST'])
 def student_signup():
     if request.method == 'POST':
-        # 1. Capture and clean data
         name = request.form.get('name')
-        email = request.form.get('email', '').strip()
+        email = request.form.get('email', '').strip().lower()
         roll_no = request.form.get('roll_no', '').strip()
-        password = request.form.get('password')
-        dept = request.form.get('department', '').strip().upper() 
+        password = request.form.get('password').strip()
+        dept = request.form.get('department', '').strip().upper()
         year = request.form.get('year')
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # 2. Check for existing email OR roll number
+        # Check existing
         cursor.execute("SELECT * FROM students WHERE email=%s OR roll_no=%s", (email, roll_no))
         if cursor.fetchone():
             cursor.close()
             conn.close()
-            # If this is hit, it re-renders the signup page with an error
-            return render_template('student/signup.html', error="Account with this Email or Roll No already exists")
+            return render_template('student/signup.html', error="Email or Roll No already exists")
 
-        # 3. Insert new student with Error Handling
         try:
             cursor = conn.cursor()
             cursor.execute("""
@@ -141,38 +138,40 @@ def student_signup():
             conn.commit()
             cursor.close()
             conn.close()
-            
-            # Use url_for to ensure the redirect works perfectly
-            return redirect(url_for('student_login'))
-            
+
+            return redirect('/student/login')
+
         except Exception as e:
-            print(f"❌ Signup Error: {e}")
-            return render_template('student/signup.html', error=f"Database error: {str(e)}")
+            return render_template('student/signup.html', error=str(e))
 
     return render_template('student/signup.html')
 
 @app.route('/student/login', methods=['GET', 'POST'])
 def student_login():
     if request.method == 'POST':
-        email = request.form.get('email').strip()
-        password = request.form.get('password')
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '').strip()
 
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM students WHERE email=%s AND password=%s", (email, password))
+
+        cursor.execute("SELECT * FROM students WHERE email=%s", (email,))
         student = cursor.fetchone()
+
+        cursor.close()
         conn.close()
 
-        if student:
+        if student and student['password'] == password:
             session.clear()
-            # Store everything the dashboard needs
             session['student_id'] = student['id']
             session['name'] = student['name']
             session['roll_no'] = student['roll_no']
             session['department'] = student['department']
             session['role'] = 'student'
-            return redirect(url_for('student_dashboard'))
-        return render_template('student/login.html', error="Invalid Credentials")
+            return redirect('/student/dashboard')
+
+        return render_template('student/login.html', error="Invalid Email or Password")
+
     return render_template('student/login.html')
 
 @app.route('/student/dashboard', methods=['GET', 'POST'])
