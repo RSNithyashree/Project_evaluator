@@ -317,49 +317,79 @@ def faculty_dashboard():
 
 @app.route('/faculty/evaluate/<int:project_id>', methods=['GET', 'POST'])
 def faculty_evaluate(project_id):
+
+    # 🔐 Check login
     if 'faculty_id' not in session:
         return redirect(url_for('faculty_login'))
 
     conn = get_db_connection()
-    # Using dictionary=True makes it easy to access columns by name like project['name']
     cursor = conn.cursor(dictionary=True)
 
+    # =========================
+    # 👉 POST: Save evaluation
+    # =========================
     if request.method == 'POST':
         try:
             marks = request.form.get('marks')
             feedback = request.form.get('feedback')
 
-            # 1. Update the status in projects table
-            cursor.execute("UPDATE projects SET status = 'Evaluated' WHERE id = %s", (project_id,))
-            
-            # 2. Save marks and feedback (Handles new entry or updating existing one)
+            # Basic validation
+            if not marks or not feedback:
+                return "Marks and Feedback are required", 400
+
+            # 1️⃣ Update project status
+            cursor.execute("""
+                UPDATE projects
+                SET status = 'Evaluated'
+                WHERE id = %s
+            """, (project_id,))
+
+            # 2️⃣ Insert OR update evaluation
             cursor.execute("""
                 INSERT INTO evaluations (project_id, faculty_id, marks, feedback)
                 VALUES (%s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE marks=%s, feedback=%s, faculty_id=%s
-            """, (project_id, session['faculty_id'], marks, feedback, marks, feedback, session['faculty_id']))
-            
+                ON DUPLICATE KEY UPDATE
+                    marks = VALUES(marks),
+                    feedback = VALUES(feedback),
+                    faculty_id = VALUES(faculty_id)
+            """, (
+                project_id,
+                session['faculty_id'],
+                marks,
+                feedback
+            ))
+
             conn.commit()
+
             return redirect(url_for('faculty_dashboard'))
-        
+
         except Exception as e:
             conn.rollback()
-            print(f"Error during evaluation: {e}")
-            return "An error occurred while saving the evaluation.", 500
+            print("❌ Error while saving evaluation:", e)
+            return "Internal Server Error", 500
+
         finally:
             cursor.close()
             conn.close()
 
-    # --- GET Method Logic ---
-    # We fetch the project, student name, and roll number in one go
+    # =========================
+    # 👉 GET: Load evaluation page
+    # =========================
     cursor.execute("""
-        SELECT p.*, s.name, s.roll_no 
-        FROM projects p 
-        JOIN students s ON p.student_id = s.id 
+        SELECT 
+            p.*, 
+            s.name AS student_name,
+            s.roll_no,
+            e.marks,
+            e.feedback
+        FROM projects p
+        JOIN students s ON p.student_id = s.id
+        LEFT JOIN evaluations e ON p.id = e.project_id
         WHERE p.id = %s
     """, (project_id,))
+
     project = cursor.fetchone()
-    
+
     cursor.close()
     conn.close()
 
