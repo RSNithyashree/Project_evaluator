@@ -9,6 +9,8 @@ from datetime import datetime
 from reportlab.pdfgen import canvas
 from io import BytesIO
 from flask import make_response
+from flask import make_response, redirect, session
+
 
 app = Flask(__name__)
 app.secret_key = "secret"
@@ -505,29 +507,63 @@ def admin_dashboard():
     conn.close()
     return render_template("admin/dashboard.html", projects=projects, analytics=analytics, dept=admin_dept)
 
+
 @app.route('/admin/download-report')
 def download_report():
-    if session.get('role') != 'admin': return redirect('/admin/login')
-    
+    if session.get('role') != 'admin':
+        return redirect('/admin/login')
+
+    dept = session.get('department')
+
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM projects WHERE status='Flagged' AND department=%s", (session['department'],))
+
+    # ✅ FIX: Join with students table to filter department correctly
+    cursor.execute("""
+        SELECT p.title, p.similarity_percentage, s.name, s.roll_no
+        FROM projects p
+        JOIN students s ON p.student_id = s.id
+        WHERE p.status = 'Flagged' AND s.department = %s
+    """, (dept,))
+
     flagged_projects = cursor.fetchall()
-    
+    conn.close()
+
+    # -------- PDF CREATION --------
     buffer = BytesIO()
-    p = canvas.Canvas(buffer)
-    p.drawString(100, 800, f"Flagged Projects Report - {session['department']}")
-    y = 750
-    for proj in flagged_projects:
-        p.drawString(100, y, f"Student: {proj['student_id']} | Title: {proj['title']} | Similarity: {proj['similarity_percentage']}%")
-        y -= 20
-    p.showPage()
-    p.save()
-    
+    pdf = canvas.Canvas(buffer)
+
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawString(150, 800, f"Flagged Projects Report - {dept}")
+
+    y = 760
+    pdf.setFont("Helvetica", 10)
+
+    if not flagged_projects:
+        pdf.drawString(100, y, "No flagged projects found.")
+    else:
+        for proj in flagged_projects:
+            pdf.drawString(50, y, f"Student : {proj['name']} ({proj['roll_no']})")
+            y -= 15
+            pdf.drawString(50, y, f"Project : {proj['title']}")
+            y -= 15
+            pdf.drawString(50, y, f"Similarity : {proj['similarity_percentage']}%")
+            y -= 25
+
+            # if page overflow create new page
+            if y < 50:
+                pdf.showPage()
+                pdf.setFont("Helvetica", 10)
+                y = 800
+
+    pdf.save()
+
     buffer.seek(0)
+
     response = make_response(buffer.getvalue())
     response.headers['Content-Type'] = 'application/pdf'
     response.headers['Content-Disposition'] = 'attachment; filename=flagged_report.pdf'
+
     return response
 
 # ---------------- FILE DOWNLOAD ----------------
