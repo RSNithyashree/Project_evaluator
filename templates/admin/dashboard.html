@@ -13,7 +13,6 @@
         .navbar { background-color: #212529; color: white; padding: 12px; }
         .card { border: none; border-radius: 12px; transition: transform 0.2s; }
         .chart-container { height: 300px; position: relative; }
-        /* Fixes the "jumping" behavior by ensuring height is reserved */
         .dashboard-wrapper { min-height: 100vh; }
     </style>
 </head>
@@ -32,6 +31,8 @@
     <h2 class="mb-4 text-dark">Welcome, Head of {{ dept }}</h2>
 
     <div class="row g-4">
+
+        <!-- LEFT SIDE CHART -->
         <div class="col-md-5">
             <div class="card shadow-sm p-4 h-100">
                 <h5 class="text-center mb-4">Project Status Overview</h5>
@@ -41,22 +42,27 @@
             </div>
         </div>
 
+        <!-- RIGHT SIDE TABLE -->
         <div class="col-md-7">
             <div class="card shadow-sm p-4 h-100">
                 <h5 class="mb-4">📁 Recent Submissions ({{ dept }})</h5>
+
                 <div class="table-responsive">
-                <div class="d-flex justify-content-between mb-3">
-                    <div class="btn-group">
-                        <a href="/admin/download-report" class="btn btn-outline-danger btn-sm">
-                            📄 Download Flagged PDF
-                        </a>
+
+                    <div class="d-flex justify-content-between mb-3">
+                        <div class="btn-group">
+                            <a href="/admin/download-report" class="btn btn-outline-danger btn-sm">
+                                📄 Download Flagged PDF
+                            </a>
+                        </div>
+
+                        <form class="d-flex align-items-center" action="/admin/set-deadline" method="POST">
+                            <label class="me-2 small fw-bold text-muted">Set Deadline:</label>
+                            <input type="datetime-local" name="deadline" class="form-control form-control-sm me-2">
+                            <button class="btn btn-dark btn-sm">Save</button>
+                        </form>
                     </div>
-                    <form class="d-flex align-items-center" action="/admin/set-deadline" method="POST">
-                        <label class="me-2 small fw-bold text-muted">Set Deadline:</label>
-                        <input type="datetime-local" name="deadline" class="form-control form-control-sm me-2">
-                        <button class="btn btn-dark btn-sm">Save</button>
-                    </form>
-                </div>
+
                     <table class="table table-hover align-middle">
                         <thead class="table-light">
                             <tr>
@@ -64,8 +70,11 @@
                                 <th>Project Title</th>
                                 <th>Similarity</th>
                                 <th>Status</th>
+                                <th>Marks</th>
+                                <th>Feedback</th>
                             </tr>
                         </thead>
+
                         <tbody>
                             {% for p in projects %}
                             <tr>
@@ -73,39 +82,56 @@
                                     <span class="fw-bold">{{ p.name }}</span><br>
                                     <small class="text-muted">{{ p.roll_no }}</small>
                                 </td>
+
                                 <td>{{ p.title }}</td>
+
                                 <td>
                                     <span class="fw-bold {{ 'text-danger' if p.similarity_percentage > 60 else 'text-success' }}">
                                         {{ p.similarity_percentage }}%
                                     </span>
                                 </td>
+
                                 <td>
                                     {% if p.status == 'Flagged' %}
                                         <span class="badge bg-danger">Flagged</span>
+
+                                    {% elif p.status == 'Evaluated' %}
+                                        <span class="badge bg-success">Evaluated</span>
+
                                     {% else %}
                                         <span class="badge bg-warning text-dark">Pending</span>
                                     {% endif %}
                                 </td>
+
                                 <td>
-                                    {{ p.similarity_percentage }}% 
-                                    <br><small class="text-muted">Matches: {{ p.matched_with or 'Original' }}</small>
+                                    {{ p.marks if p.marks else '-' }}
                                 </td>
+
+                                <td>
+                                    {{ p.feedback if p.feedback else '-' }}
+                                </td>
+                                
                             </tr>
                             {% endfor %}
                         </tbody>
+
                     </table>
+
                 </div>
             </div>
         </div>
+
     </div>
 </div>
 
+<!-- CHART DATA -->
 <div id="chart-data" 
      data-labels='{{ analytics|map(attribute="status")|list|tojson|safe }}'
      data-values='{{ analytics|map(attribute="count")|list|tojson|safe }}'
      style="display: none;">
 </div>
 
+<!-- CHART SCRIPT -->
 <script>
 (function() {
     "use strict";
@@ -125,9 +151,9 @@
             datasets: [{
                 data: dataValues,
                 backgroundColor: [
-                    '#ffc107', // Warning/Pending
-                    '#dc3545', // Danger/Flagged
-                    '#198754'  // Success/Approved
+                    '#ffc107', // Pending
+                    '#dc3545', // Flagged
+                    '#198754'  // Evaluated
                 ],
                 borderWidth: 2,
                 hoverOffset: 10
@@ -142,7 +168,7 @@
                     labels: { padding: 20, usePointStyle: true }
                 }
             },
-            cutout: '70%' // Makes it a clean ring shape
+            cutout: '70%'
         }
     });
 })();

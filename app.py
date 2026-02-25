@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, session, send_from_directory
+from flask import Flask, render_template, request, redirect, session, send_from_directory, url_for
 import mysql.connector
 import os
 import uuid
@@ -9,7 +9,6 @@ from datetime import datetime
 from reportlab.pdfgen import canvas
 from io import BytesIO
 from flask import make_response
-from flask import make_response, redirect, session
 
 
 app = Flask(__name__)
@@ -181,85 +180,111 @@ def student_dashboard():
     if 'student_id' not in session:
         return redirect('/student/login')
 
-    # --- HANDLING PROJECT SUBMISSION ---
-    if request.method == 'POST':
-        title = request.form['title']
-        description = request.form['description']
-        file = request.files['file']
-
-        # 1. Save File
-        filename = str(uuid.uuid4()) + "_" + file.filename
-        filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-        file.save(filepath)
-
-        with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-            new_project_text = f.read()
-
-        # 2. Get existing projects for comparison
+    try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT title, file_path FROM projects")
-        existing_rows = cursor.fetchall()
 
-        old_project_texts = []
-        project_titles = []
-        for row in existing_rows:
-            path = os.path.join(app.config["UPLOAD_FOLDER"], row['file_path'])
-            if os.path.exists(path):
-                with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                    old_project_texts.append(f.read())
-                    project_titles.append(row['title'])
+        # ---------- PROJECT SUBMISSION ----------
+        if request.method == 'POST':
+            title = request.form['title']
+            description = request.form['description']
+            file = request.files['file']
 
-        # 3. Calculate Similarity
-        similarity, match_index = calculate_similarity(new_project_text, old_project_texts)
-        matched_with = project_titles[match_index] if match_index is not None and similarity > 0 else "None (Original)"
-        status = "Flagged" if similarity > 60 else "Pending"
+            filename = str(uuid.uuid4()) + "_" + file.filename
+            filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+            file.save(filepath)
 
-        # 4. Deadline Management Check
-        cursor.execute("SELECT deadline FROM department_settings WHERE department=%s", (session['department'],))
-        deadline_row = cursor.fetchone()
-        
-        submission_note = "On-Time"
-        if deadline_row and deadline_row['deadline']:
-            if datetime.now() > deadline_row['deadline']:
-                submission_note = "Late Submission"
+            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                new_project_text = f.read()
 
-        # 5. Save to Database
+            # Existing projects for plagiarism check
+            cursor.execute("SELECT title, file_path FROM projects")
+            existing_rows = cursor.fetchall()
+
+            old_project_texts = []
+            project_titles = []
+
+            for row in existing_rows:
+                path = os.path.join(app.config["UPLOAD_FOLDER"], row['file_path'])
+                if os.path.exists(path):
+                    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                        old_project_texts.append(f.read())
+                        project_titles.append(row['title'])
+
+            similarity, match_index = calculate_similarity(new_project_text, old_project_texts)
+
+            matched_with = project_titles[match_index] if match_index is not None and similarity > 0 else "Original"
+            status = "Flagged" if similarity > 60 else "Pending"
+
+            # Deadline check
+            cursor.execute(
+                "SELECT deadline FROM department_settings WHERE department=%s",
+                (session['department'],)
+            )
+            deadline_row = cursor.fetchone()
+
+            submission_note = "On-Time"
+            if deadline_row and deadline_row['deadline']:
+                if datetime.now() > deadline_row['deadline']:
+                    submission_note = "Late Submission"
+
+            cursor.execute("""
+                INSERT INTO projects 
+                (student_id, title, description, file_path, similarity_percentage, status, matched_with, submission_note)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (
+                session['student_id'],
+                title,
+                description,
+                filename,
+                similarity,
+                status,
+                matched_with,
+                submission_note
+            ))
+
+            conn.commit()
+
+        # ---------- FETCH PROJECTS + MARKS + FEEDBACK ----------
         cursor.execute("""
-            INSERT INTO projects 
-            (student_id, title, description, file_path, similarity_percentage, status, matched_with, submission_note)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-        """, (session['student_id'], title, description, filename, similarity, status, matched_with, submission_note))
+            SELECT 
+                p.*, 
+                s.name, 
+                s.roll_no, 
+                s.department,
+                e.marks,
+                e.feedback
+            FROM projects p
+            JOIN students s ON p.student_id = s.id
+            LEFT JOIN evaluations e ON p.id = e.project_id
+            WHERE p.student_id = %s
+            ORDER BY p.submission_date DESC
+        """, (session['student_id'],))
 
-        conn.commit()
-        cursor.close()
-        conn.close()
+        projects = cursor.fetchall()
 
-    # --- FETCHING DATA FOR DISPLAY ---
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    # 1. Fetch Projects
-    cursor.execute("""
-        SELECT p.*, s.name, s.roll_no, s.department
-        FROM projects p
-        JOIN students s ON p.student_id = s.id
-        WHERE p.student_id=%s
-        ORDER BY p.submission_date DESC
-    """, (session['student_id'],))
-    projects = cursor.fetchall()
-    
-    # 2. Fetch Student Info (Needed for the top bar if projects list is empty)
-    cursor.execute("SELECT name, roll_no, department FROM students WHERE id=%s", (session['student_id'],))
-    student_info = cursor.fetchone()
-    
-    cursor.close()
-    conn.close()
+        cursor.execute(
+            "SELECT name, roll_no, department FROM students WHERE id=%s",
+            (session['student_id'],)
+        )
+        student_info = cursor.fetchone()
 
-    # Pass 'student' and 'projects' to the template
-    return render_template('student/dashboard.html', 
-                           projects=projects, 
-                           student=student_info)
+        return render_template(
+            'student/dashboard.html',
+            projects=projects,
+            student=student_info
+        )
+
+    except Exception as e:
+        print("❌ Error in student dashboard:", e)
+        return "Internal Server Error", 500
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+            
 # =========================================================
 # 👩‍🏫 FACULTY MODULE
 # =========================================================
@@ -303,41 +328,60 @@ def faculty_login():
 def faculty_dashboard():
     if 'faculty_id' not in session:
         return redirect('/faculty/login')
+
     dept = session['department']
+    faculty_id = session['faculty_id']
+
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
+
     cursor.execute("""
-        SELECT p.*, s.name, s.roll_no, s.department
+        SELECT 
+            p.*, 
+            s.name AS student_name, 
+            s.roll_no, 
+            s.department,
+            e.marks,
+            e.feedback
         FROM projects p
         JOIN students s ON p.student_id = s.id
-        WHERE s.department=%s
-    """, (dept,))
+        LEFT JOIN evaluations e 
+            ON p.id = e.project_id AND e.faculty_id = %s
+        WHERE s.department = %s
+        ORDER BY p.id DESC
+    """, (faculty_id, dept))
+
     projects = cursor.fetchall()
+
     cursor.close()
     conn.close()
+
     return render_template('faculty/dashboard.html', projects=projects)
 
 @app.route('/faculty/evaluate/<int:project_id>', methods=['GET', 'POST'])
 def faculty_evaluate(project_id):
 
-    # 🔐 Check login
     if 'faculty_id' not in session:
         return redirect(url_for('faculty_login'))
 
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # =========================
-    # 👉 POST: Save evaluation
-    # =========================
+    # ---------------- POST METHOD ----------------
     if request.method == 'POST':
         try:
             marks = request.form.get('marks')
             feedback = request.form.get('feedback')
 
-            # Basic validation
             if not marks or not feedback:
                 return "Marks and Feedback are required", 400
+
+            marks = int(marks)
+
+            if marks < 0 or marks > 100:
+                return "Marks must be between 0 and 100", 400
+
+            faculty_id = session['faculty_id']
 
             # 1️⃣ Update project status
             cursor.execute("""
@@ -346,7 +390,7 @@ def faculty_evaluate(project_id):
                 WHERE id = %s
             """, (project_id,))
 
-            # 2️⃣ Insert OR update evaluation
+            # 2️⃣ Insert or update evaluation
             cursor.execute("""
                 INSERT INTO evaluations (project_id, faculty_id, marks, feedback)
                 VALUES (%s, %s, %s, %s)
@@ -356,7 +400,7 @@ def faculty_evaluate(project_id):
                     faculty_id = VALUES(faculty_id)
             """, (
                 project_id,
-                session['faculty_id'],
+                faculty_id,
                 marks,
                 feedback
             ))
@@ -374,9 +418,9 @@ def faculty_evaluate(project_id):
             cursor.close()
             conn.close()
 
-    # =========================
-    # 👉 GET: Load evaluation page
-    # =========================
+    # ---------------- GET METHOD ----------------
+    faculty_id = session['faculty_id']
+
     cursor.execute("""
         SELECT 
             p.*, 
@@ -386,9 +430,10 @@ def faculty_evaluate(project_id):
             e.feedback
         FROM projects p
         JOIN students s ON p.student_id = s.id
-        LEFT JOIN evaluations e ON p.id = e.project_id
+        LEFT JOIN evaluations e 
+            ON p.id = e.project_id AND e.faculty_id = %s
         WHERE p.id = %s
-    """, (project_id,))
+    """, (faculty_id, project_id))
 
     project = cursor.fetchone()
 
@@ -479,22 +524,30 @@ def admin_dashboard():
     if session.get('role') != 'admin':
         return redirect('/admin/login')
 
-    admin_dept = session.get('department') # Get HoD's dept from session
+    admin_dept = session.get('department')
+
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # Filter projects by HoD's department only
+    # Fetch projects with evaluation details
     cursor.execute("""
-        SELECT p.*, s.name, s.roll_no, s.department 
+        SELECT 
+            p.*, 
+            s.name, 
+            s.roll_no, 
+            s.department,
+            e.marks,
+            e.feedback
         FROM projects p 
         JOIN students s ON p.student_id = s.id 
+        LEFT JOIN evaluations e ON p.id = e.project_id
         WHERE s.department = %s
         ORDER BY p.id DESC
     """, (admin_dept,))
+
     projects = cursor.fetchall()
 
-    # Filter chart to show specific stats for this department
-    # For HoD, we can show "Status Distribution" instead of "All Depts"
+    # Analytics
     cursor.execute("""
         SELECT status, COUNT(*) as count 
         FROM projects p 
@@ -502,11 +555,16 @@ def admin_dashboard():
         WHERE s.department = %s 
         GROUP BY status
     """, (admin_dept,))
+
     analytics = cursor.fetchall()
 
+    cursor.close()
     conn.close()
-    return render_template("admin/dashboard.html", projects=projects, analytics=analytics, dept=admin_dept)
 
+    return render_template("admin/dashboard.html",
+                           projects=projects,
+                           analytics=analytics,
+                           dept=admin_dept)
 
 @app.route('/admin/download-report')
 def download_report():

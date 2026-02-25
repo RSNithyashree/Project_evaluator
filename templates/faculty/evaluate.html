@@ -34,7 +34,9 @@
                     <strong>Student:</strong> {{ project.name }} <br>
                     <strong>Roll No:</strong> {{ project.roll_no }}
                 </div>
-                <a href="{{ url_for('static', filename='uploads/' + project.file_path) }}" 
+
+                <!-- 🔧 FIXED DOWNLOAD LINK -->
+                <a href="{{ url_for('uploaded_file', filename=project.file_path) }}" 
                    target="_blank" 
                    class="btn btn-sm view-btn">
                     View Project File
@@ -43,10 +45,10 @@
         </div>
         
         <div class="card-body p-4">
+
+            <!-- ✅ FORM ID ADDED -->
             <form id="evalForm" method="POST" action="{{ url_for('faculty_evaluate', project_id=project.id) }}">
 
-
-                
                 <div class="mb-4">
                     <label class="form-label fw-bold">Marks (0 - 100)</label>
                     <div class="input-group">
@@ -83,6 +85,7 @@
                         </a>
                     </div>
                 </div>
+
             </form>
         </div>
     </div>
